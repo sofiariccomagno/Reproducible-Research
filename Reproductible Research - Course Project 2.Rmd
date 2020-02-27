@@ -1,0 +1,107 @@
+---
+title: "Reproducible Research - Course Project 2"
+author: "Sofia Riccomagno"
+date: "27/02/2020"
+output: html_document
+---
+
+#Quantified Effects of Weather Events in the USA
+*In this document, the data collected from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database was analysed to answer the questions:  
+- What weather events have the largest human impact (i.e. injuries/fatalities)?  
+- What weather events have the largest economic impact (i.e. property and crop damages)?   
+The dataset was firstly subdivided to exclusively take into account,either the human impact (FATALITIES or INJURIES + EVTYPE) or the economic impact (PROPDMG,PROPDMGEXP,CROPDMG + EVTYPE). The rows of the selected columns were then grouped by event type and summed up to reach the total count of the damages for each weather event.   
+With the final count of the damages, a plot was made for each type of damage:   
+1. Injuries   
+2. Fatalities   
+3. Economic Damages   
+From the analysis, it appears that tornadoes are the weather events with the largest human and economic impact.*
+
+##Data Processing
+Firstly, the libraries needed for the data analysis are loaded into RStudio and then the dataset is read. *The dataset is available for download [here](https://github.com/sofiariccomagno/Reproducible-Research/blob/master/repdata-data-StormData.csv.bz2).*
+```{r dataprocessing, echo=TRUE, message=FALSE, warning=FALSE}
+#Load libraries and dataset
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(viridis)
+data<-read_csv("repdata-data-StormData.csv")
+```
+###Human damage
+For the human damage, the *data* dataset is subset with `select` to select the relevant columns, the rows are then grouped together by event type with `group_by`, then, a new column is created in which the rows with the same event type are summed together with `summarise` and finally, the new dataset is arranged in decreasing order with `arrange`. The new datasets (*fatalities* and *injuries*) are finally checked with `head`. 
+```{r humandataprocessing, echo=TRUE}
+fatalities<-data %>% select(EVTYPE, FATALITIES) %>% group_by(EVTYPE) %>% summarise(total.fatalities = sum(FATALITIES)) %>% arrange(-total.fatalities)
+head(fatalities, 10)
+
+injuries<-data %>% select(EVTYPE, INJURIES) %>% group_by(EVTYPE) %>% summarise(total.injuries = sum(INJURIES)) %>% arrange(-total.injuries)
+head(injuries, 10)
+```  
+
+###Economic damage  
+
+The econimic data is not as straightforward to process. The PROPDMGEXP column contains letters that are repesenting the power of 10 to with the value of PROPDMG is multipled to show the actual value of the damage. CROPDMGEXP is not included in the selection as it only has values of 0 or NA, rendering its inclusion in the data processing superfluous. 
+To take into account the exponents, a dataframe that matches the letter to the value of the exponent is created (e.g K with 10^3) and then a new column is created, so that that the value in PROPDMG can easily be multiplied. 
+The *damage* dataset is then changed with `mutate` to have the final value of the property damage by multiplying the value in the PROPDMG by the new Prop.Multiplier column. Finally, the *damage.total* is calculated by adding the damages to crops to the damages to properties, the results are then `group_by` event type and the total damages are added up to find the total damages (crops+properties) caused by each weather event and the *damage.total* are `arrange` in decreasing order. The results are then visualised with the `head` function.  
+
+```{r economicdataprocessing, echo=TRUE}
+#Find out the Event Types with the biggest economic damages
+damage<-data %>% select(EVTYPE, PROPDMG,PROPDMGEXP,CROPDMG)
+Symbol<-sort(unique(as.character(data$PROPDMGEXP)))
+Multiplier<-c(0,0,1,10,10,10,10,10,10,10,10,10,10^9,10^2,10^2,10^3,10^6,10^6)
+convert.Multiplier<-data.frame(Symbol, Multiplier)
+damage$Prop.Multiplier<-convert.Multiplier$Multiplier[match(damage$PROPDMGEXP, convert.Multiplier$Symbol)]
+damage<-damage %>% mutate(PROPDMG = PROPDMG*Prop.Multiplier)%>% mutate(TOTAL.DMG = PROPDMG+CROPDMG)
+damage.total<-damage %>% group_by(EVTYPE) %>% summarize(TOTAL.DMG.EVTYPE = sum(TOTAL.DMG))%>% arrange(-TOTAL.DMG.EVTYPE) 
+head(damage.total,10)
+```  
+
+##Results  
+
+To visualise results, three plots are created. Because of the nature of the data, barplots are used, with a bar for each event weather event (x axis) and the height of the bar representing the magnitude of the damage caused (y axis). For clarity, only the first ten weather events have been included.  
+
+###Human damages  
+
+####Fatalities plot   
+
+```{r fatalitiesplot, echo=TRUE}
+g<-ggplot(fatalities[1:10,], aes(x=reorder(EVTYPE, -total.fatalities), y=total.fatalities))+
+  geom_bar(stat="identity",fill=plasma(10))+
+  theme(plot.title=element_text(face="bold",hjust=0.5),
+        axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))+
+  ggtitle("Top 10 Events with Highest Total Fatalities")+
+  labs(x="Event Type", y="Total Fatalities")
+g
+```  
+  
+As we can see from the plot, the weather event causing the largest number of fatalities is **tornadoes**, with more than double the number of fatalities caused by the second most damaging event, **excessive heat**.  
+  
+####Injuries plot
+  
+```{r injuriesplot, echo=TRUE}
+h<-ggplot(injuries[1:10,], aes(x=reorder(EVTYPE, -total.injuries), y=total.injuries))+
+  geom_bar(stat="identity",fill=magma(10))+
+  theme(plot.title=element_text(face="bold",hjust=0.5),
+        axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))+
+  ggtitle("Top 10 Events with Highest Total Injuries")+
+  labs(x="Event Type", y="Total Injuries")
+h
+```  
+  
+As we can see from the plot, the weather event causing the largest number of injuries is **tornadoes**, with more than ten times the number of injuries caused by the second most damaging event, **thunderstorm winds**.  
+  
+###Economic damages
+  
+```{r economicplot, echo=TRUE}
+j<-ggplot(damage.total[1:10,], aes(x=reorder(EVTYPE, -TOTAL.DMG.EVTYPE), y=TOTAL.DMG.EVTYPE))+
+  geom_bar(stat="identity",fill=viridis(10))+
+  theme(plot.title=element_text(face="bold",hjust=0.5),axis.text.x = element_text(angle=90, vjust=0.5, hjust=1))+
+  ggtitle("Top 10 Events with Largest Economic Damage")+
+  labs(x="Event Type", y="Total Cost")
+
+j
+```  
+  
+As we can see from the plot, the weather event causing the largest economic damage is **tornadoes**, with more than two times the economic damage caused by the second most damaging event, **wild fires**.  
+  
+##Conclusion
+  
+Tornadoes are the single most important weather event cause of human and economic damage in the US.
